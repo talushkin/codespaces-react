@@ -17,6 +17,7 @@ function App() {
   const [nowMs, setNowMs] = useState(Date.now());
   const [refreshMessage, setRefreshMessage] = useState('');
   const [projects, setProjects] = useState([]);
+  const [projectFilter, setProjectFilter] = useState('RECENT'); // 'RECENT' or 'HISTORY'
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(10);
   const [loading, setLoading] = useState(false);
@@ -344,6 +345,18 @@ function App() {
     return `${day}/${month}/${year}`;
   };
 
+  const filteredProjects = projects.filter((p) => {
+    const expiryDate = p?.expiryDate || p?.expirationDate;
+    if (!expiryDate) return projectFilter === 'RECENT'; // no expiry = show in RECENT
+    const expiry = new Date(expiryDate);
+    const now = new Date();
+    if (projectFilter === 'RECENT') {
+      return expiry >= now;
+    } else {
+      return expiry < now;
+    }
+  });
+
   return (
     <div className="page">
       <div className="card">
@@ -520,12 +533,32 @@ function App() {
         {error && <div className="error">{error}</div>}
 
         <div className="projects">
-          <div className="token-label">Projects</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+            <div className="token-label">Projects</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setProjectFilter('RECENT')}
+                className={projectFilter === 'RECENT' ? 'btn-projects' : 'subtle'}
+                style={{ padding: '6px 12px', fontSize: '0.9rem' }}
+              >
+                RECENT
+              </button>
+              <button
+                onClick={() => setProjectFilter('HISTORY')}
+                className={projectFilter === 'HISTORY' ? 'btn-projects' : 'subtle'}
+                style={{ padding: '6px 12px', fontSize: '0.9rem' }}
+              >
+                HISTORY
+              </button>
+            </div>
+          </div>
           {projects.length === 0 ? (
             <div className="muted">No projects loaded yet.</div>
+          ) : filteredProjects.length === 0 ? (
+            <div className="muted">No {projectFilter.toLowerCase()} projects found.</div>
           ) : (
             <ul>
-              {projects.map((p, idx) => (
+              {filteredProjects.map((p, idx) => (
                 <li key={p?.id || idx}>
                   <div className="project-main">
                     <strong>{p?.name || 'Unnamed project'}</strong>
