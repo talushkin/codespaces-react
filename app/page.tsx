@@ -1,25 +1,32 @@
-import { useEffect, useMemo, useState } from 'react';
-import './App.css';
+'use client';
 
-const BASE_URL = import.meta.env.VITE_API_BASE || '/api';
+import { useEffect, useMemo, useState } from 'react';
+import styles from './page.module.css';
+
+const BASE_URL = '/api';
 const PREFILL_EMAIL = 'testme0@gmail.com';
 const PREFILL_PASSWORD = 'xplace1207';
 
-function App() {
+export default function Home() {
   const [email, setEmail] = useState(PREFILL_EMAIL);
   const [password, setPassword] = useState(PREFILL_PASSWORD);
-  const [accessToken, setAccessToken] = useState(() => sessionStorage.getItem('accessToken') || '');
-  const [accessTokenHistory, setAccessTokenHistory] = useState([]); // newest first
-  const [tokenExpiryMs, setTokenExpiryMs] = useState(null);
+  const [accessToken, setAccessToken] = useState('');
+  const [accessTokenHistory, setAccessTokenHistory] = useState<Array<{token: string; expMs: number | null; recordedAt: number}>>([]); 
+  const [tokenExpiryMs, setTokenExpiryMs] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState(Date.now());
   const [refreshMessage, setRefreshMessage] = useState('');
-  const [projects, setProjects] = useState([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(10);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // In a Vite/React setup we store tokens in sessionStorage to mimic "session" semantics.
+  // In Next.js setup we store tokens in sessionStorage to persist across navigations
+  useEffect(() => {
+    const stored = sessionStorage.getItem('accessToken');
+    if (stored) setAccessToken(stored);
+  }, []);
+
   useEffect(() => {
     if (accessToken) {
       sessionStorage.setItem('accessToken', accessToken);
@@ -41,7 +48,7 @@ function App() {
     [accessToken]
   );
 
-  const handleLogin = async (e) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
@@ -49,7 +56,6 @@ function App() {
     try {
       const res = await fetch(`${BASE_URL}/security/sign-in`, {
         method: 'POST',
-        mode: 'cors',
         credentials: 'include', // needed so the XPL_RT cookie is set by the browser
         headers: {
           Accept: 'application/json',
@@ -77,7 +83,7 @@ function App() {
       const token = body?.user_info?.tokenDto?.accessToken;
       updateAccessToken(token);
       setRefreshMessage('Login succeeded. XPL_RT cookie set by server (HttpOnly, not readable via JS).');
-    } catch (err) {
+    } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
@@ -113,7 +119,7 @@ function App() {
       updateAccessToken(token);
       setRefreshMessage('Access token refreshed. XPL_RT cookie expiry is not exposed to JS (HttpOnly).');
       return token;
-    } catch (err) {
+    } catch (err: any) {
       setError(err.message);
       throw err;
     }
@@ -175,14 +181,14 @@ function App() {
 
       const body = await res.json().catch(() => ({}));
       throw new Error(`[${res.status}] ${body?.messages?.join(', ') || `Projects failed`}`);
-    } catch (err) {
+    } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const updateAccessToken = (token) => {
+  const updateAccessToken = (token: string) => {
     setAccessToken(token || '');
     const expMs = token ? getExpiryMs(token) : null;
     setTokenExpiryMs(expMs);
@@ -193,7 +199,7 @@ function App() {
     });
   };
 
-  const getExpiryMs = (token) => {
+  const getExpiryMs = (token: string): number | null => {
     try {
       const [, payload] = token.split('.');
       const decoded = JSON.parse(atob(payload));
@@ -216,7 +222,7 @@ function App() {
     return `${mins}m ${secs}s`;
   };
 
-  const formatDate = (value) => {
+  const formatDate = (value: any) => {
     if (!value) return 'n/a';
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return 'n/a';
@@ -224,11 +230,11 @@ function App() {
   };
 
   return (
-    <div className="page">
-      <div className="card">
+    <div className={styles.page}>
+      <div className={styles.card}>
         <h1>XPL Test Login</h1>
-        <form className="form" onSubmit={handleLogin}>
-          <label className="label">
+        <form className={styles.form} onSubmit={handleLogin}>
+          <label className={styles.label}>
             Email
             <input
               value={email}
@@ -237,7 +243,7 @@ function App() {
               autoComplete="email"
             />
           </label>
-          <label className="label">
+          <label className={styles.label}>
             Password
             <input
               value={password}
@@ -246,22 +252,22 @@ function App() {
               autoComplete="current-password"
             />
           </label>
-          <button className="primary btn-login" type="submit" disabled={loading}>
+          <button className={`${styles.primary} ${styles.btnLogin}`} type="submit" disabled={loading}>
             {loading ? 'Working…' : 'Login (/security/sign-in)'}
           </button>
         </form>
 
-        <div className="actions">
-          <button onClick={handleRefresh} disabled={loading} className="btn-refresh">
+        <div className={styles.actions}>
+          <button onClick={handleRefresh} disabled={loading} className={styles.btnRefresh}>
             Refresh token (/security/refresh)
           </button>
-          <button onClick={handleGetProjects} disabled={loading || !accessToken} className="btn-projects">
+          <button onClick={handleGetProjects} disabled={loading || !accessToken} className={styles.btnProjects}>
             Get user projects (/projects)
           </button>
         </div>
 
-        <div className="query-row">
-          <label className="label inline">
+        <div className={styles.queryRow}>
+          <label className={`${styles.label} ${styles.inline}`}>
             Page
             <input
               type="number"
@@ -270,7 +276,7 @@ function App() {
               onChange={(e) => setPage(Number(e.target.value) || 0)}
             />
           </label>
-          <label className="label inline">
+          <label className={`${styles.label} ${styles.inline}`}>
             Size
             <input
               type="number"
@@ -282,27 +288,27 @@ function App() {
         </div>
 
         {accessToken ? (
-          <div className="token">
-            <div className="token-label">Access Token</div>
+          <div className={styles.token}>
+            <div className={styles.tokenLabel}>Access Token</div>
             <textarea readOnly value={accessToken} />
-            <div className="expiry-row">
+            <div className={styles.expiryRow}>
               <div>Expires at: {tokenExpiryMs ? new Date(tokenExpiryMs).toLocaleString() : 'unknown'}</div>
-              <div className="pill subtle">Countdown: {formatRemaining()}</div>
+              <div className={`${styles.pill} ${styles.subtle}`}>Countdown: {formatRemaining()}</div>
             </div>
           </div>
         ) : (
-          <div className="muted">Access token not set.</div>
+          <div className={styles.muted}>Access token not set.</div>
         )}
 
         {accessTokenHistory.length > 0 && (
-          <div className="history">
-            <div className="token-label">Recent Access Tokens</div>
+          <div className={styles.history}>
+            <div className={styles.tokenLabel}>Recent Access Tokens</div>
             <ul>
               {accessTokenHistory.map((entry, idx) => (
                 <li key={entry.recordedAt}>
-                  <span className="pill">{idx + 1}</span>
-                  <span className="token-snippet">{entry.token.slice(0, 24)}…</span>
-                  <span className="muted small-text">
+                  <span className={styles.pill}>{idx + 1}</span>
+                  <span className={styles.tokenSnippet}>{entry.token.slice(0, 24)}…</span>
+                  <span className={`${styles.muted} ${styles.smallText}`}>
                     exp: {entry.expMs ? new Date(entry.expMs).toLocaleTimeString() : 'n/a'}
                   </span>
                 </li>
@@ -311,32 +317,32 @@ function App() {
           </div>
         )}
 
-        {refreshMessage && <div className="info">{refreshMessage}</div>}
-        {error && <div className="error">{error}</div>}
+        {refreshMessage && <div className={styles.info}>{refreshMessage}</div>}
+        {error && <div className={styles.error}>{error}</div>}
 
-        <div className="projects">
-          <div className="token-label">Projects</div>
+        <div className={styles.projects}>
+          <div className={styles.tokenLabel}>Projects</div>
           {projects.length === 0 ? (
-            <div className="muted">No projects loaded yet.</div>
+            <div className={styles.muted}>No projects loaded yet.</div>
           ) : (
             <ul>
-              {projects.map((p, idx) => (
+              {projects.map((p: any, idx: number) => (
                 <li key={p?.id || idx}>
-                  <div className="project-main">
+                  <div className={styles.projectMain}>
                     <strong>{p?.name || 'Unnamed project'}</strong>
-                    {p?.id ? <span className="pill">ID: {p.id}</span> : null}
-                    <span className="pill subtle">#{idx + 1}</span>
+                    {p?.id ? <span className={styles.pill}>ID: {p.id}</span> : null}
+                    <span className={`${styles.pill} ${styles.subtle}`}>#{idx + 1}</span>
                   </div>
                   {p?.projectCategories?.length > 0 && (
-                    <div className="project-categories">
-                      {p.projectCategories.map((cat, catIdx) => (
-                        <span key={catIdx} className="pill category">
+                    <div className={styles.projectCategories}>
+                      {p.projectCategories.map((cat: any, catIdx: number) => (
+                        <span key={catIdx} className={`${styles.pill} ${styles.category}`}>
                           {cat?.nameHe || cat?.name || 'Unknown'}
                         </span>
                       ))}
                     </div>
                   )}
-                  <div className="project-meta">
+                  <div className={styles.projectMeta}>
                     <span>Created: {formatDate(p?.creationDate || p?.createdAt)}</span>
                     <span>Expires: {formatDate(p?.expiryDate || p?.expirationDate)}</span>
                   </div>
@@ -346,7 +352,7 @@ function App() {
           )}
         </div>
 
-        <div className="muted small-text">
+        <div className={`${styles.muted} ${styles.smallText}`}>
           Note: XPL_RT is an HttpOnly cookie set by the API. Browsers will send it automatically on
           subsequent requests with credentials included, but JavaScript cannot read its value or expiry.
         </div>
@@ -354,5 +360,3 @@ function App() {
     </div>
   );
 }
-
-export default App;

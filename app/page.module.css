@@ -87,15 +87,15 @@ button:disabled {
   width: 100%;
 }
 
-.btn-login {
+.btnLogin {
   background: linear-gradient(135deg, #10b981, #059669);
 }
 
-.btn-refresh {
+.btnRefresh {
   background: linear-gradient(135deg, #3b82f6, #1d4ed8);
 }
 
-.btn-projects {
+.btnProjects {
   background: linear-gradient(135deg, #fbbf24, #f59e0b);
 }
 
