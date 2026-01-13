@@ -324,6 +324,15 @@ function App() {
                     {p?.id ? <span className="pill">ID: {p.id}</span> : null}
                     <span className="pill subtle">#{idx + 1}</span>
                   </div>
+                  {p?.projectCategories?.length > 0 && (
+                    <div className="project-categories">
+                      {p.projectCategories.map((cat, catIdx) => (
+                        <span key={catIdx} className="pill category">
+                          {cat?.nameHe || cat?.name || 'Unknown'}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div className="project-meta">
                     <span>Created: {formatDate(p?.creationDate || p?.createdAt)}</span>
                     <span>Expires: {formatDate(p?.expiryDate || p?.expirationDate)}</span>

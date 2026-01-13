@@ -206,6 +206,18 @@ li {
   flex-wrap: wrap;
 }
 
+.project-categories {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.category {
+  background: rgba(36, 198, 220, 0.15);
+  color: #b9ecff;
+  font-size: 0.8rem;
+}
+
 .project-meta {
   display: flex;
   gap: 14px;
