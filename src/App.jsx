@@ -36,6 +36,11 @@ function App() {
     lastLogin: '',
   });
 
+  // Reset localStorage on app start
+  useEffect(() => {
+    localStorage.removeItem('accessToken');
+  }, []);
+
   // In a Vite/React setup we store tokens in sessionStorage to mimic "session" semantics.
   useEffect(() => {
     if (accessToken) {
