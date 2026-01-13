@@ -99,6 +99,10 @@ button:disabled {
   background: linear-gradient(135deg, #fbbf24, #f59e0b);
 }
 
+.btn-signout {
+  background: linear-gradient(135deg, #f87171, #dc2626);
+}
+
 .actions {
   display: flex;
   gap: 10px;

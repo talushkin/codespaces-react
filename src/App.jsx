@@ -106,7 +106,8 @@ function App() {
 
       if (!res.ok) {
         const message = parsed?.messages?.join(', ') || `Refresh failed`;
-        throw new Error(`[${res.status}] ${message}`);
+        const fullResponse = JSON.stringify(parsed || text, null, 2);
+        throw new Error(`[${res.status}] ${message}\n\nFull API Response:\n${fullResponse}`);
       }
 
       const token = parsed?.accessToken;
@@ -123,6 +124,43 @@ function App() {
     setLoading(true);
     try {
       await refreshAccessToken();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    setError('');
+    setRefreshMessage('');
+    setLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/security/sign-out`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          accept: 'application/json',
+        },
+      });
+
+      const text = await res.text();
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (err) {
+        parsed = null;
+      }
+
+      if (!res.ok) {
+        const message = parsed?.messages?.join(', ') || text || 'Sign out failed';
+        throw new Error(`[${res.status}] ${message}`);
+      }
+
+      updateAccessToken('');
+      setAccessTokenHistory([]);
+      setProjects([]);
+      setRefreshMessage('Signed out successfully.');
+    } catch (err) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -149,8 +187,8 @@ function App() {
         return;
       }
 
-      // If expired and server returns 500, attempt refresh once then retry.
-      if (res.status === 500 && !attemptedRefresh) {
+      // On any non-OK, attempt one refresh then retry.
+      if (!res.ok && !attemptedRefresh) {
         attemptedRefresh = true;
         const newToken = await refreshAccessToken();
         const retryHeaders = {
@@ -258,6 +296,9 @@ function App() {
           <button onClick={handleGetProjects} disabled={loading || !accessToken} className="btn-projects">
             Get user projects (/projects)
           </button>
+          <button onClick={handleSignOut} disabled={loading} className="btn-signout">
+            Sign out (/security/sign-out)
+          </button>
         </div>
 
         <div className="query-row">
@@ -301,7 +342,11 @@ function App() {
               {accessTokenHistory.map((entry, idx) => (
                 <li key={entry.recordedAt}>
                   <span className="pill">{idx + 1}</span>
-                  <span className="token-snippet">{entry.token.slice(0, 24)}…</span>
+                  <span className="token-snippet">
+                    {entry.token.length > 48
+                      ? `${entry.token.slice(0, 24)}…${entry.token.slice(-20)}`
+                      : entry.token}
+                  </span>
                   <span className="muted small-text">
                     exp: {entry.expMs ? new Date(entry.expMs).toLocaleTimeString() : 'n/a'}
                   </span>

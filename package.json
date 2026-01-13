@@ -19,7 +19,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "vite dev --host --port 3000"
   },
   "eslintConfig": {
     "extends": [
