@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import './App.css';
 
-const BASE_URL = '/api';
+// Use hardcoded URL for local development, proxy for Vercel
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const BASE_URL = isLocal ? 'https://xpltestdev.click/app/v1' : '/api';
 const PREFILL_EMAIL = 'testme0@gmail.com';
 const PREFILL_PASSWORD = 'xplace1207';
 
 function App() {
   const [email, setEmail] = useState(PREFILL_EMAIL);
   const [password, setPassword] = useState(PREFILL_PASSWORD);
+  const [showPassword, setShowPassword] = useState(false);
   const [accessToken, setAccessToken] = useState(() => sessionStorage.getItem('accessToken') || '');
   const [accessTokenHistory, setAccessTokenHistory] = useState([]); // newest first
   const [tokenExpiryMs, setTokenExpiryMs] = useState(null);
@@ -18,6 +21,16 @@ function App() {
   const [size, setSize] = useState(10);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [userData, setUserData] = useState({
+    userId: '',
+    firstName: '',
+    lastName: '',
+    userName: '',
+    userType: '',
+    companyAccountType: '',
+    activePlan: '',
+    lastLogin: '',
+  });
 
   // In a Vite/React setup we store tokens in sessionStorage to mimic "session" semantics.
   useEffect(() => {
@@ -47,6 +60,7 @@ function App() {
     setLoading(true);
     setProjects([]);
     try {
+      // Do NOT send authorization header on login - only credentials
       const res = await fetch(`${BASE_URL}/security/sign-in`, {
         method: 'POST',
         mode: 'cors',
@@ -54,6 +68,7 @@ function App() {
         headers: {
           Accept: 'application/json',
           'Content-Type': 'application/json',
+          // Explicitly NOT sending any authorization header
         },
         body: JSON.stringify({
           email,
@@ -76,6 +91,33 @@ function App() {
 
       const token = body?.user_info?.tokenDto?.accessToken;
       updateAccessToken(token);
+      
+      // Extract and store user data from response
+      if (body?.user_info) {
+        // Get userType from JWT token payload
+        let userType = '';
+        if (token) {
+          try {
+            const [, payload] = token.split('.');
+            const decoded = JSON.parse(atob(payload));
+            userType = decoded.accountType || '';
+          } catch (err) {
+            // ignore parse errors
+          }
+        }
+        
+        setUserData({
+          userId: body.user_info.id || '',
+          firstName: body.user_info.firstName || '',
+          lastName: body.user_info.lastName || '',
+          userName: body.user_info.username || '',
+          userType: userType,
+          companyAccountType: body.company_info?.companyAccountType || '',
+          activePlan: body.user_info.activePlan || '',
+          lastLogin: body.company_info?.lastLogin || '',
+        });
+      }
+      
       setRefreshMessage('Login succeeded. XPL_RT cookie set by server (HttpOnly, not readable via JS).');
     } catch (err) {
       setError(err.message);
@@ -129,6 +171,38 @@ function App() {
     }
   };
 
+  const clearAllData = () => {
+    // Clear access token
+    updateAccessToken('');
+    // Clear token history
+    setAccessTokenHistory([]);
+    // Clear projects
+    setProjects([]);
+    // Clear user data
+    setUserData({
+      userId: '',
+      firstName: '',
+      lastName: '',
+      userName: '',
+      userType: '',
+      companyAccountType: '',
+      activePlan: '',
+      lastLogin: '',
+    });
+    // Clear session storage
+    sessionStorage.removeItem('accessToken');
+    // Clear all cookies by setting them with empty values and past expiry
+    document.cookie.split(';').forEach((c) => {
+      const cookieName = c.split('=')[0].trim();
+      if (cookieName) {
+        // Clear with no domain/path
+        document.cookie = `${cookieName}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`;
+        // Also try with domain
+        document.cookie = `${cookieName}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;domain=.xpltestdev.click;path=/;`;
+      }
+    });
+  };
+
   const handleSignOut = async () => {
     setError('');
     setRefreshMessage('');
@@ -136,9 +210,12 @@ function App() {
     try {
       const res = await fetch(`${BASE_URL}/security/sign-out`, {
         method: 'POST',
-        credentials: 'include',
+        credentials: 'include', // sends cookies including XPL_RT
         headers: {
           accept: 'application/json',
+          'content-type': 'application/json',
+          // Send bearer token in header
+          ...(accessToken && { authorization: `Bearer ${accessToken}` }),
         },
       });
 
@@ -155,12 +232,15 @@ function App() {
         throw new Error(`[${res.status}] ${message}`);
       }
 
-      updateAccessToken('');
-      setAccessTokenHistory([]);
-      setProjects([]);
-      setRefreshMessage('Signed out successfully.');
+      // Clear all local data
+      clearAllData();
+      setRefreshMessage('Signed out successfully. All tokens, cookies, and projects cleared.');
+      // Reload page after successful logout
+      setTimeout(() => window.location.reload(), 1000);
     } catch (err) {
       setError(err.message);
+      // Still clear local data even if the request fails
+      clearAllData();
     } finally {
       setLoading(false);
     }
@@ -258,7 +338,10 @@ function App() {
     if (!value) return 'n/a';
     const d = new Date(value);
     if (Number.isNaN(d.getTime())) return 'n/a';
-    return d.toLocaleString();
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
   };
 
   return (
@@ -277,12 +360,49 @@ function App() {
           </label>
           <label className="label">
             Password
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              autoComplete="current-password"
-            />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                style={{ paddingRight: '80px', width: '100%' }}
+              />
+              <button
+                type="button"
+                onClick={() => setPassword('')}
+                style={{
+                  position: 'absolute',
+                  right: '40px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  fontSize: '1.2rem',
+                  color: '#7bd7ff',
+                }}
+                title="Clear password"
+              >
+                ✕
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  fontSize: '1.2rem',
+                  color: '#7bd7ff',
+                }}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? '👁️' : '👁️‍🗨️'}
+              </button>
+            </div>
           </label>
           <button className="primary btn-login" type="submit" disabled={loading}>
             {loading ? 'Working…' : 'Login (/security/sign-in)'}
@@ -333,6 +453,46 @@ function App() {
           </div>
         ) : (
           <div className="muted">Access token not set.</div>
+        )}
+
+        {(userData.firstName || userData.lastName || userData.userName) && (
+          <div className="token">
+            <div className="token-label">User Information</div>
+            <ul>
+              {userData.userId && (
+                <li>
+                  <span className="pill">User ID</span>
+                  <span className="token-snippet">{userData.userId}</span>
+                </li>
+              )}
+              <li>
+                <span className="pill">Name</span>
+                <span className="token-snippet">
+                  {userData.firstName} {userData.lastName}
+                </span>
+              </li>
+              <li>
+                <span className="pill">Username</span>
+                <span className="token-snippet">{userData.userName}</span>
+              </li>
+              {userData.userType && (
+                <li>
+                  <span className="pill">User Type</span>
+                  <span className="token-snippet">{userData.userType}</span>
+                </li>
+              )}
+              <li>
+                <span className="pill">Active Plan</span>
+                <span className="token-snippet">{userData.activePlan ? 'Yes' : 'No'}</span>
+              </li>
+              {userData.lastLogin && (
+                <li>
+                  <span className="pill">Last Login</span>
+                  <span className="token-snippet">{formatDate(userData.lastLogin)}</span>
+                </li>
+              )}
+            </ul>
+          </div>
         )}
 
         {accessTokenHistory.length > 0 && (
