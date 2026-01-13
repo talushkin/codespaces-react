@@ -17,6 +17,9 @@ function App() {
   const [nowMs, setNowMs] = useState(Date.now());
   const [refreshMessage, setRefreshMessage] = useState('');
   const [projects, setProjects] = useState([]);
+  const [totalProjects, setTotalProjects] = useState(0);
+  const [hasMoreProjects, setHasMoreProjects] = useState(true);
+  const [projectsPayload, setProjectsPayload] = useState('');
   const [projectFilter, setProjectFilter] = useState('RECENT'); // 'RECENT' or 'HISTORY'
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(10);
@@ -179,6 +182,9 @@ function App() {
     setAccessTokenHistory([]);
     // Clear projects
     setProjects([]);
+    setTotalProjects(0);
+    setHasMoreProjects(true);
+    setProjectsPayload('');
     // Clear user data
     setUserData({
       userId: '',
@@ -247,53 +253,75 @@ function App() {
     }
   };
 
-  const handleGetProjects = async () => {
+  const handleGetProjects = async (pageNum = 0, append = false) => {
     setError('');
-    setProjects([]);
+    if (!append) {
+      setProjects([]);
+      setTotalProjects(0);
+      setHasMoreProjects(true);
+      setPage(0);
+    }
     setLoading(true);
     let attemptedRefresh = false;
-    try {
-      const search = new URLSearchParams({ page: String(page), size: String(size) });
+
+    const fetchPage = async (authToken) => {
+      const search = new URLSearchParams({ page: String(pageNum), size: String(size) });
       const res = await fetch(`${BASE_URL}/projects?${search.toString()}`, {
         method: 'GET',
         credentials: 'include',
         headers: {
           ...commonHeaders,
+          ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
         },
       });
-      if (res.ok) {
-        const body = await res.json();
-        const items = Array.isArray(body) ? body : body?.content || body?.projects || [];
-        setProjects(items);
-        return;
+
+      const text = await res.text();
+      let body;
+      try {
+        body = JSON.parse(text);
+      } catch (err) {
+        body = null;
       }
 
-      // On any non-OK, attempt one refresh then retry.
-      if (!res.ok && !attemptedRefresh) {
+      if (!res.ok) {
+        return { ok: false, body, status: res.status, text };
+      }
+
+      const payload = Array.isArray(body) ? body[0] || {} : body || {};
+      const items = payload?.projects || payload?.content || payload?.projectsList || (Array.isArray(body) ? body : []);
+      const totalCount =
+        payload?.totalElements ?? payload?.totalCount ?? payload?.total ?? payload?.count ??
+        (Array.isArray(body) ? body.length : items.length);
+
+      // Show full response for debugging (use window.alert to avoid blocking issues)
+      const payloadString = JSON.stringify(body ?? {}, null, 2);
+      window.alert(payloadString);
+      setProjectsPayload(payloadString);
+
+      const newProjects = append ? [...projects, ...items] : items;
+      setProjects(newProjects);
+      setTotalProjects(totalCount || newProjects.length);
+      const moreAvailable = totalCount ? newProjects.length < totalCount : true;
+      setHasMoreProjects(moreAvailable);
+      setPage(pageNum);
+      return { ok: true };
+    };
+
+    try {
+      const firstAttempt = await fetchPage();
+      if (firstAttempt.ok) return;
+
+      if (!attemptedRefresh) {
         attemptedRefresh = true;
         const newToken = await refreshAccessToken();
-        const retryHeaders = {
-          accept: 'application/json',
-          'content-type': 'application/json',
-          authorization: newToken ? `Bearer ${newToken}` : undefined,
-        };
-        const retryRes = await fetch(`${BASE_URL}/projects?${search.toString()}`, {
-          method: 'GET',
-          credentials: 'include',
-          headers: retryHeaders,
-        });
-        if (!retryRes.ok) {
-          const retryBody = await retryRes.json().catch(() => ({}));
-          throw new Error(`[${retryRes.status}] ${retryBody?.messages?.join(', ') || `Projects failed`}`);
-        }
-        const retryBody = await retryRes.json();
-        const items = Array.isArray(retryBody) ? retryBody : retryBody?.content || retryBody?.projects || [];
-        setProjects(items);
-        return;
+        const retry = await fetchPage(newToken);
+        if (retry.ok) return;
+        const message = retry.body?.messages?.join(', ') || retry.text || 'Projects failed';
+        throw new Error(`[${retry.status}] ${message}`);
       }
 
-      const body = await res.json().catch(() => ({}));
-      throw new Error(`[${res.status}] ${body?.messages?.join(', ') || `Projects failed`}`);
+      const message = firstAttempt.body?.messages?.join(', ') || firstAttempt.text || 'Projects failed';
+      throw new Error(`[${firstAttempt.status}] ${message}`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -345,17 +373,32 @@ function App() {
     return `${day}/${month}/${year}`;
   };
 
-  const filteredProjects = projects.filter((p) => {
-    const expiryDate = p?.expiryDate || p?.expirationDate;
-    if (!expiryDate) return projectFilter === 'RECENT'; // no expiry = show in RECENT
-    const expiry = new Date(expiryDate);
-    const now = new Date();
-    if (projectFilter === 'RECENT') {
-      return expiry >= now;
-    } else {
-      return expiry < now;
-    }
+  const recentProjects = projects.filter((p) => {
+    const expiryDate = p?.expiryDate || p?.expirationDate || p?.projectDueDate;
+    if (!expiryDate) return true;
+    return new Date(expiryDate) >= new Date();
   });
+
+  const historyProjects = projects.filter((p) => {
+    const expiryDate = p?.expiryDate || p?.expirationDate || p?.projectDueDate;
+    if (!expiryDate) return false;
+    return new Date(expiryDate) < new Date();
+  });
+
+  const filteredProjects = projectFilter === 'RECENT' ? recentProjects : historyProjects;
+
+  const loadMoreProjects = () => {
+    if (!loading && hasMoreProjects) {
+      handleGetProjects(page + 1, true);
+    }
+  };
+
+  const handleScroll = (e) => {
+    const reachedBottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 50;
+    if (reachedBottom) {
+      loadMoreProjects();
+    }
+  };
 
   return (
     <div className="page">
@@ -426,7 +469,7 @@ function App() {
           <button onClick={handleRefresh} disabled={loading} className="btn-refresh">
             Refresh token (/security/refresh)
           </button>
-          <button onClick={handleGetProjects} disabled={loading || !accessToken} className="btn-projects">
+          <button onClick={() => handleGetProjects(0, false)} disabled={loading || !accessToken} className="btn-projects">
             Get user projects (/projects)
           </button>
           <button onClick={handleSignOut} disabled={loading} className="btn-signout">
@@ -534,21 +577,26 @@ function App() {
 
         <div className="projects">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-            <div className="token-label">Projects</div>
+            <div
+              className="token-label"
+              title={projectsPayload || 'No projects payload loaded yet.'}
+            >
+              Projects ({filteredProjects.length}/{totalProjects || projects.length})
+            </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 onClick={() => setProjectFilter('RECENT')}
                 className={projectFilter === 'RECENT' ? 'btn-projects' : 'subtle'}
                 style={{ padding: '6px 12px', fontSize: '0.9rem' }}
               >
-                RECENT
+                RECENT ({recentProjects.length})
               </button>
               <button
                 onClick={() => setProjectFilter('HISTORY')}
                 className={projectFilter === 'HISTORY' ? 'btn-projects' : 'subtle'}
                 style={{ padding: '6px 12px', fontSize: '0.9rem' }}
               >
-                HISTORY
+                HISTORY ({historyProjects.length})
               </button>
             </div>
           </div>
@@ -557,30 +605,61 @@ function App() {
           ) : filteredProjects.length === 0 ? (
             <div className="muted">No {projectFilter.toLowerCase()} projects found.</div>
           ) : (
-            <ul>
-              {filteredProjects.map((p, idx) => (
-                <li key={p?.id || idx}>
-                  <div className="project-main">
-                    <strong>{p?.name || 'Unnamed project'}</strong>
-                    {p?.id ? <span className="pill">ID: {p.id}</span> : null}
-                    <span className="pill subtle">#{idx + 1}</span>
-                  </div>
-                  {p?.projectCategories?.length > 0 && (
-                    <div className="project-categories">
-                      {p.projectCategories.map((cat, catIdx) => (
-                        <span key={catIdx} className="pill category">
-                          {cat?.nameHe || cat?.name || 'Unknown'}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="project-meta">
-                    <span>Created: {formatDate(p?.creationDate || p?.createdAt)}</span>
-                    <span>Expires: {formatDate(p?.expiryDate || p?.expirationDate)}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <div
+              onScroll={handleScroll}
+              style={{ maxHeight: '500px', overflowY: 'auto', paddingRight: '8px' }}
+            >
+              <ul>
+                {filteredProjects.map((p, idx) => {
+                  const projectId = p?.id ?? p?.projectId;
+                  const title = p?.name ?? p?.title ?? 'Unnamed project';
+                  const createdAt = p?.creationDate ?? p?.createdAt ?? p?.dateCreated;
+                  const expiresAt = p?.expiryDate ?? p?.expirationDate ?? p?.projectDueDate;
+                  return (
+                    <li key={projectId || idx}>
+                      <div className="project-main">
+                        <strong>{title}</strong>
+                        {projectId ? <span className="pill">ID: {projectId}</span> : null}
+                        <span className="pill subtle">#{idx + 1}</span>
+                      </div>
+                      {p?.projectCategories?.length > 0 && (
+                        <div className="project-categories">
+                          {p.projectCategories.map((cat, catIdx) => (
+                            <span key={catIdx} className="pill category">
+                              {cat?.nameHe || cat?.name || cat?.nameEn || 'Unknown'}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="project-meta">
+                        <span>Created: {formatDate(createdAt)}</span>
+                        <span>Expires: {formatDate(expiresAt)}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+                {loading && projects.length > 0 && (
+                  <li className="muted" style={{ textAlign: 'center', padding: '10px' }}>Loading more...</li>
+                )}
+                {!loading && projects.length > 0 && (
+                  <li style={{ textAlign: 'center', padding: '10px' }}>
+                    <button
+                      type="button"
+                      className="btn-projects"
+                      style={{ width: '100%' }}
+                      onClick={() => handleGetProjects(page + 1, true)}
+                    >
+                      Read more projects
+                    </button>
+                  </li>
+                )}
+                {!loading && !hasMoreProjects && projects.length > 0 && (
+                  <li className="muted" style={{ textAlign: 'center', padding: '6px 10px' }}>
+                    Reached total ({totalProjects || projects.length})
+                  </li>
+                )}
+              </ul>
+            </div>
           )}
         </div>
 
