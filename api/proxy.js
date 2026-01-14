@@ -5,20 +5,27 @@ export default async function handler(req, res) {
   const url = `https://xpltestdev.click/app/v1/${fullPath}${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`;
 
   try {
+    // Prepare headers - forward cookies from the client
+    const headers = {
+      ...req.headers,
+      host: 'xpltestdev.click',
+    };
+    
+    // Remove headers that shouldn't be forwarded
+    delete headers['content-length'];
+    
     const response = await fetch(url, {
       method: req.method,
-      headers: {
-        ...req.headers,
-        host: 'xpltestdev.click',
-      },
+      headers: headers,
       body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
+      credentials: 'include', // Important: include cookies in the request
     });
 
     const data = await response.text();
     
-    // Copy response headers
+    // Copy response headers, including Set-Cookie
     response.headers.forEach((value, name) => {
-      if (name.toLowerCase() !== 'content-encoding') {
+      if (name.toLowerCase() !== 'content-encoding' && name.toLowerCase() !== 'transfer-encoding') {
         res.setHeader(name, value);
       }
     });
