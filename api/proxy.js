@@ -24,18 +24,11 @@ export default async function handler(req, res) {
 
     const data = await response.text();
     
-    // Handle Set-Cookie headers - they need special handling in fetch API
-    const setCookieHeader = response.headers.raw()['set-cookie'];
-    if (setCookieHeader) {
-      res.setHeader('Set-Cookie', setCookieHeader);
-    }
-    
-    // Copy other response headers
+    // Copy all response headers
     response.headers.forEach((value, name) => {
       const lowerName = name.toLowerCase();
       if (lowerName !== 'content-encoding' && 
-          lowerName !== 'transfer-encoding' && 
-          lowerName !== 'set-cookie') {
+          lowerName !== 'transfer-encoding') {
         res.setHeader(name, value);
       }
     });
