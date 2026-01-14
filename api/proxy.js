@@ -7,25 +7,35 @@ export default async function handler(req, res) {
   try {
     // Prepare headers - forward cookies from the client
     const headers = {
-      ...req.headers,
-      host: 'xpltestdev.click',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
     };
     
-    // Remove headers that shouldn't be forwarded
-    delete headers['content-length'];
+    // Forward cookies from the client to the backend
+    if (req.headers.cookie) {
+      headers['Cookie'] = req.headers.cookie;
+    }
     
     const response = await fetch(url, {
       method: req.method,
       headers: headers,
       body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
-      credentials: 'include', // Important: include cookies in the request
     });
 
     const data = await response.text();
     
-    // Copy response headers, including Set-Cookie
+    // Handle Set-Cookie headers - they need special handling in fetch API
+    const setCookieHeader = response.headers.raw()['set-cookie'];
+    if (setCookieHeader) {
+      res.setHeader('Set-Cookie', setCookieHeader);
+    }
+    
+    // Copy other response headers
     response.headers.forEach((value, name) => {
-      if (name.toLowerCase() !== 'content-encoding' && name.toLowerCase() !== 'transfer-encoding') {
+      const lowerName = name.toLowerCase();
+      if (lowerName !== 'content-encoding' && 
+          lowerName !== 'transfer-encoding' && 
+          lowerName !== 'set-cookie') {
         res.setHeader(name, value);
       }
     });
