@@ -22,7 +22,7 @@ function App() {
   const [projectsPayload, setProjectsPayload] = useState('');
   const [projectFilter, setProjectFilter] = useState('RECENT'); // 'RECENT' or 'HISTORY'
   const [page, setPage] = useState(0);
-  const [size, setSize] = useState(10);
+  const [size, setSize] = useState(999);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [userData, setUserData] = useState({
@@ -128,8 +128,24 @@ function App() {
       }
       
       setRefreshMessage('Login succeeded. XPL_RT cookie set by server (HttpOnly, not readable via JS).');
+      
+      // Check if xpl_rt cookie exists (it's HttpOnly so won't appear in document.cookie)
+      const allCookies = document.cookie;
+      const hasXplRt = allCookies.includes('xpl_rt') || allCookies.includes('XPL_RT');
+      
+      // Show success alert
+      const cookieStatus = hasXplRt 
+        ? '✓ xpl_rt cookie found in document.cookie' 
+        : '⚠ xpl_rt cookie NOT visible in document.cookie (this is expected if HttpOnly is set)';
+      
+      alert(`✓ Login Successful!\n\nUser: ${body?.user_info?.username || email}\nAccess Token: ${token ? 'Received' : 'Missing'}\n\n${cookieStatus}\n\nAll cookies: ${allCookies || '(none)'}`);
+      
+      // Automatically fetch 999 projects after successful login
+      await handleGetProjects(0, false);
     } catch (err) {
       setError(err.message);
+      // Show error alert
+      alert(`✗ Login Failed!\n\nError: ${err.message}`);
     } finally {
       setLoading(false);
     }
