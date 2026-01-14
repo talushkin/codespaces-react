@@ -34,12 +34,23 @@ export default async function handler(req, res) {
 
     const data = await response.text();
     
-    // Copy all response headers
+    // Copy all response headers, including Set-Cookie
     response.headers.forEach((value, name) => {
       const lowerName = name.toLowerCase();
       if (lowerName !== 'content-encoding' && 
           lowerName !== 'transfer-encoding') {
-        res.setHeader(name, value);
+        // For Set-Cookie headers, we need special handling since they can be multiple
+        if (lowerName === 'set-cookie') {
+          // Vercel/Node expects Set-Cookie as array for multiple cookies
+          const existing = res.getHeader('Set-Cookie');
+          if (existing) {
+            res.setHeader('Set-Cookie', Array.isArray(existing) ? [...existing, value] : [existing, value]);
+          } else {
+            res.setHeader('Set-Cookie', value);
+          }
+        } else {
+          res.setHeader(name, value);
+        }
       }
     });
 
