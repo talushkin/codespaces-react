@@ -140,6 +140,8 @@ function App() {
       if (userType === 'PROVIDER') {
         // For PROVIDER: first get categories, then fetch filtered projects from search
         await handleGetUserCategories();
+        // Wait 1 second after getting categories before fetching projects
+        await new Promise(resolve => setTimeout(resolve, 1000));
         await handleGetProjects(0, false);
       } else {
         // For BUYER: just fetch regular projects
