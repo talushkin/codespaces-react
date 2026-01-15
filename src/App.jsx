@@ -952,7 +952,7 @@ function App() {
                   const price = p?.amount_pj;
                   const budgetRangeText = p?.budgetRange ? getBudgetRangeText(p.budgetRange) : null;
                   return (
-                    <li key={projectId || idx}>
+                    <li key={projectId || idx} style={p.isHotProject ? { backgroundColor: '#694421' } : {}}>
                       <div className="project-main">
                         <strong>{title}</strong>
                         {p.isHotProject && (
