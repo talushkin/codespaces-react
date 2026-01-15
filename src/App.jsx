@@ -38,7 +38,7 @@ function App() {
   const [totalProjects, setTotalProjects] = useState(0);
   const [hasMoreProjects, setHasMoreProjects] = useState(true);
   const [projectsPayload, setProjectsPayload] = useState('');
-  const [projectFilter, setProjectFilter] = useState('RECENT'); // 'RECENT' or 'HISTORY'
+  const [projectFilter, setProjectFilter] = useState('RECENT'); // 'RECENT', 'HISTORY', or 'HOT'
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(999);
   const [loading, setLoading] = useState(false);
@@ -55,6 +55,7 @@ function App() {
   });
   const [userCategories, setUserCategories] = useState([]);
   const [sortBy, setSortBy] = useState('default'); // 'default', 'creationDate', 'expiryDate', 'price'
+  const [sortOrder, setSortOrder] = useState('desc'); // 'asc' or 'desc'
 
   // Clear both localStorage and sessionStorage on page reload
   useEffect(() => {
@@ -338,8 +339,17 @@ function App() {
       
       // Check user type to determine which endpoint to use
       if (currentUserType === 'PROVIDER') {
-        // For PROVIDER, always use search endpoint
-        search = new URLSearchParams({ page: String(pageNum), size: String(size), sb: 'true' });
+        // For PROVIDER, always use search endpoint - only return non-expired projects
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayTimestamp = today.getTime();
+        
+        search = new URLSearchParams({ 
+          page: String(pageNum), 
+          size: String(size), 
+          sb: 'true',
+          minExpiryDate: todayTimestamp // Filter out expired projects
+        });
         if (userCategories.length > 0) {
           // Include categories if available
           const categoryParams = userCategories.map(cat => `cat=${cat.id}`).join('&');
@@ -519,18 +529,20 @@ function App() {
     if (!a.isHotProject && b.isHotProject) return 1;
     
     // Then apply user-selected sorting
+    const multiplier = sortOrder === 'asc' ? 1 : -1;
+    
     if (sortBy === 'creationDate') {
       const aDate = new Date(a.creationDate || a.createdAt || 0).getTime();
       const bDate = new Date(b.creationDate || b.createdAt || 0).getTime();
-      return bDate - aDate; // newest first
+      return (bDate - aDate) * multiplier;
     } else if (sortBy === 'expiryDate') {
       const aDate = new Date(a.expiryDate || a.expirationDate || a.projectDueDate || 0).getTime();
       const bDate = new Date(b.expiryDate || b.expirationDate || b.projectDueDate || 0).getTime();
-      return aDate - bDate; // earliest expiry first
+      return (aDate - bDate) * multiplier;
     } else if (sortBy === 'price') {
       const aPrice = a.amount_pj || 0;
       const bPrice = b.amount_pj || 0;
-      return bPrice - aPrice; // highest price first
+      return (bPrice - aPrice) * multiplier;
     }
     
     return 0;
@@ -539,6 +551,9 @@ function App() {
   const historyProjects = projects.filter((p) => {
     // If user is PROVIDER, don't show any in HISTORY
     if (userData.userType === 'PROVIDER') return false;
+    
+    // Exclude HOT projects from HISTORY - they should only appear in HOT tab
+    if (p.isHotProject === true) return false;
     
     const expiryDate = p?.expiryDate || p?.expirationDate || p?.projectDueDate;
     if (!expiryDate) return false;
@@ -549,31 +564,54 @@ function App() {
     const expiry = new Date(expiryDate);
     expiry.setHours(0, 0, 0, 0);
     
-    return expiry <= today;
+    return expiry < today;
   }).sort((a, b) => {
     // Sort hot projects first
     if (a.isHotProject && !b.isHotProject) return -1;
     if (!a.isHotProject && b.isHotProject) return 1;
     
     // Then apply user-selected sorting
+    const multiplier = sortOrder === 'asc' ? 1 : -1;
+    
     if (sortBy === 'creationDate') {
       const aDate = new Date(a.creationDate || a.createdAt || 0).getTime();
       const bDate = new Date(b.creationDate || b.createdAt || 0).getTime();
-      return bDate - aDate; // newest first
+      return (bDate - aDate) * multiplier;
     } else if (sortBy === 'expiryDate') {
       const aDate = new Date(a.expiryDate || a.expirationDate || a.projectDueDate || 0).getTime();
       const bDate = new Date(b.expiryDate || b.expirationDate || b.projectDueDate || 0).getTime();
-      return aDate - bDate; // earliest expiry first
+      return (aDate - bDate) * multiplier;
     } else if (sortBy === 'price') {
       const aPrice = a.amount_pj || 0;
       const bPrice = b.amount_pj || 0;
-      return bPrice - aPrice; // highest price first
+      return (bPrice - aPrice) * multiplier;
     }
     
     return 0;
   });
 
-  const filteredProjects = projectFilter === 'RECENT' ? recentProjects : historyProjects;
+  const hotProjects = projects.filter((p) => p.isHotProject === true).sort((a, b) => {
+    // Apply user-selected sorting
+    const multiplier = sortOrder === 'asc' ? 1 : -1;
+    
+    if (sortBy === 'creationDate') {
+      const aDate = new Date(a.creationDate || a.createdAt || 0).getTime();
+      const bDate = new Date(b.creationDate || b.createdAt || 0).getTime();
+      return (bDate - aDate) * multiplier;
+    } else if (sortBy === 'expiryDate') {
+      const aDate = new Date(a.expiryDate || a.expirationDate || a.projectDueDate || 0).getTime();
+      const bDate = new Date(b.expiryDate || b.expirationDate || b.projectDueDate || 0).getTime();
+      return (aDate - bDate) * multiplier;
+    } else if (sortBy === 'price') {
+      const aPrice = a.amount_pj || 0;
+      const bPrice = b.amount_pj || 0;
+      return (bPrice - aPrice) * multiplier;
+    }
+    
+    return 0;
+  });
+
+  const filteredProjects = projectFilter === 'RECENT' ? recentProjects : projectFilter === 'HOT' ? hotProjects : historyProjects;
 
   const loadMoreProjects = () => {
     if (!loading && hasMoreProjects) {
@@ -891,6 +929,13 @@ function App() {
                   RECENT ({recentProjects.length})
                 </button>
                 <button
+                  onClick={() => setProjectFilter('HOT')}
+                  className={projectFilter === 'HOT' ? 'btn-projects' : 'subtle'}
+                  style={{ padding: '6px 12px', fontSize: '0.9rem' }}
+                >
+                  🔥 HOT ({hotProjects.length})
+                </button>
+                <button
                   onClick={() => setProjectFilter('HISTORY')}
                   className={projectFilter === 'HISTORY' ? 'btn-projects' : 'subtle'}
                   style={{ padding: '6px 12px', fontSize: '0.9rem' }}
@@ -904,32 +949,60 @@ function App() {
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.85rem', color: '#999' }}>Sort by:</span>
                 <button
-                  onClick={() => setSortBy('default')}
+                  onClick={() => {
+                    if (sortBy === 'default') {
+                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setSortBy('default');
+                      setSortOrder('desc');
+                    }
+                  }}
                   className={sortBy === 'default' ? 'btn-projects' : 'subtle'}
                   style={{ padding: '4px 10px', fontSize: '0.85rem' }}
                 >
-                  Default
+                  Default {sortBy === 'default' ? (sortOrder === 'asc' ? '↑' : '↓') : '↓'}
                 </button>
                 <button
-                  onClick={() => setSortBy('creationDate')}
+                  onClick={() => {
+                    if (sortBy === 'creationDate') {
+                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setSortBy('creationDate');
+                      setSortOrder('desc');
+                    }
+                  }}
                   className={sortBy === 'creationDate' ? 'btn-projects' : 'subtle'}
                   style={{ padding: '4px 10px', fontSize: '0.85rem' }}
                 >
-                  Creation Date
+                  Creation Date {sortBy === 'creationDate' ? (sortOrder === 'asc' ? '↑' : '↓') : '↓'}
                 </button>
                 <button
-                  onClick={() => setSortBy('expiryDate')}
+                  onClick={() => {
+                    if (sortBy === 'expiryDate') {
+                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setSortBy('expiryDate');
+                      setSortOrder('asc');
+                    }
+                  }}
                   className={sortBy === 'expiryDate' ? 'btn-projects' : 'subtle'}
                   style={{ padding: '4px 10px', fontSize: '0.85rem' }}
                 >
-                  Expiry Date
+                  Expiry Date {sortBy === 'expiryDate' ? (sortOrder === 'asc' ? '↑' : '↓') : '↑'}
                 </button>
                 <button
-                  onClick={() => setSortBy('price')}
+                  onClick={() => {
+                    if (sortBy === 'price') {
+                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setSortBy('price');
+                      setSortOrder('desc');
+                    }
+                  }}
                   className={sortBy === 'price' ? 'btn-projects' : 'subtle'}
                   style={{ padding: '4px 10px', fontSize: '0.85rem' }}
                 >
-                  Price
+                  Price {sortBy === 'price' ? (sortOrder === 'asc' ? '↑' : '↓') : '↓'}
                 </button>
               </div>
             )}
