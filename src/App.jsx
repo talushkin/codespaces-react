@@ -332,6 +332,8 @@ function App() {
           expiryDate: item.expirationDate,
           expirationDate: item.expirationDate,
           projectDueDate: item.project_due_date,
+          isHotProject: item.isHotProject || false,
+          urgent: item.urgent || false,
           projectCategories: item.categories?.map(cat => ({
             id: cat.catId_facet,
             nameHe: cat.nameHe,
@@ -429,15 +431,31 @@ function App() {
   };
 
   const recentProjects = projects.filter((p) => {
+    // If user is PROVIDER, show all search results as RECENT
+    if (userData.userType === 'PROVIDER') return true;
+    
     const expiryDate = p?.expiryDate || p?.expirationDate || p?.projectDueDate;
     if (!expiryDate) return true;
     return new Date(expiryDate) >= new Date();
+  }).sort((a, b) => {
+    // Sort hot projects first
+    if (a.isHotProject && !b.isHotProject) return -1;
+    if (!a.isHotProject && b.isHotProject) return 1;
+    return 0;
   });
 
   const historyProjects = projects.filter((p) => {
+    // If user is PROVIDER, don't show any in HISTORY
+    if (userData.userType === 'PROVIDER') return false;
+    
     const expiryDate = p?.expiryDate || p?.expirationDate || p?.projectDueDate;
     if (!expiryDate) return false;
     return new Date(expiryDate) < new Date();
+  }).sort((a, b) => {
+    // Sort hot projects first
+    if (a.isHotProject && !b.isHotProject) return -1;
+    if (!a.isHotProject && b.isHotProject) return 1;
+    return 0;
   });
 
   const filteredProjects = projectFilter === 'RECENT' ? recentProjects : historyProjects;
@@ -587,8 +605,15 @@ function App() {
           <button onClick={handleRefresh} disabled={loading} className="btn-refresh">
             Refresh token (/security/refresh)
           </button>
-          <button onClick={() => handleGetProjects(0, false)} disabled={loading || !accessToken} className="btn-projects">
-            Get user projects (/projects)
+          <button 
+            onClick={() => handleGetProjects(0, false)} 
+            disabled={loading || !accessToken} 
+            className="btn-projects"
+            style={userData.userType === 'PROVIDER' ? { backgroundColor: '#ff69b4', borderColor: '#ff69b4' } : {}}
+          >
+            {userData.userType === 'PROVIDER' 
+              ? 'Get Filtered projects (/search)' 
+              : 'Get user projects (/projects)'}
           </button>
           <button onClick={handleGetUserCategories} disabled={loading || !accessToken} className="btn-projects">
             Get user categories (/core/categories_user)
@@ -767,6 +792,11 @@ function App() {
                     <li key={projectId || idx}>
                       <div className="project-main">
                         <strong>{title}</strong>
+                        {p.isHotProject && (
+                          <span className="pill" style={{ backgroundColor: '#ff4444', color: 'white', fontWeight: 'bold' }}>
+                            🔥 HOT
+                          </span>
+                        )}
                         {projectId ? <span className="pill">ID: {projectId}</span> : null}
                         <span className="pill subtle">#{idx + 1}</span>
                       </div>
