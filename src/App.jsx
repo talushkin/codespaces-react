@@ -36,6 +36,7 @@ function App() {
     lastLogin: '',
   });
   const [userCategories, setUserCategories] = useState([]);
+  const [sortBy, setSortBy] = useState('default'); // 'default', 'creationDate', 'expiryDate', 'price'
 
   // Reset localStorage on app start
   useEffect(() => {
@@ -340,6 +341,7 @@ function App() {
           projectDueDate: item.project_due_date,
           isHotProject: item.isHotProject || false,
           urgent: item.urgent || false,
+          amount_pj: item.amount_pj || 0,
           projectCategories: item.categories?.map(cat => ({
             id: cat.catId_facet,
             nameHe: cat.nameHe,
@@ -447,6 +449,22 @@ function App() {
     // Sort hot projects first
     if (a.isHotProject && !b.isHotProject) return -1;
     if (!a.isHotProject && b.isHotProject) return 1;
+    
+    // Then apply user-selected sorting
+    if (sortBy === 'creationDate') {
+      const aDate = new Date(a.creationDate || a.createdAt || 0).getTime();
+      const bDate = new Date(b.creationDate || b.createdAt || 0).getTime();
+      return bDate - aDate; // newest first
+    } else if (sortBy === 'expiryDate') {
+      const aDate = new Date(a.expiryDate || a.expirationDate || a.projectDueDate || 0).getTime();
+      const bDate = new Date(b.expiryDate || b.expirationDate || b.projectDueDate || 0).getTime();
+      return aDate - bDate; // earliest expiry first
+    } else if (sortBy === 'price') {
+      const aPrice = a.amount_pj || 0;
+      const bPrice = b.amount_pj || 0;
+      return bPrice - aPrice; // highest price first
+    }
+    
     return 0;
   });
 
@@ -461,6 +479,22 @@ function App() {
     // Sort hot projects first
     if (a.isHotProject && !b.isHotProject) return -1;
     if (!a.isHotProject && b.isHotProject) return 1;
+    
+    // Then apply user-selected sorting
+    if (sortBy === 'creationDate') {
+      const aDate = new Date(a.creationDate || a.createdAt || 0).getTime();
+      const bDate = new Date(b.creationDate || b.createdAt || 0).getTime();
+      return bDate - aDate; // newest first
+    } else if (sortBy === 'expiryDate') {
+      const aDate = new Date(a.expiryDate || a.expirationDate || a.projectDueDate || 0).getTime();
+      const bDate = new Date(b.expiryDate || b.expirationDate || b.projectDueDate || 0).getTime();
+      return aDate - bDate; // earliest expiry first
+    } else if (sortBy === 'price') {
+      const aPrice = a.amount_pj || 0;
+      const bPrice = b.amount_pj || 0;
+      return bPrice - aPrice; // highest price first
+    }
+    
     return 0;
   });
 
@@ -755,29 +789,65 @@ function App() {
         {error && <div className="error">{error}</div>}
 
         <div className="projects">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-            <div
-              className="token-label"
-              title={projectsPayload || 'No projects payload loaded yet.'}
-            >
-              Projects ({filteredProjects.length}/{totalProjects || projects.length})
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={() => setProjectFilter('RECENT')}
-                className={projectFilter === 'RECENT' ? 'btn-projects' : 'subtle'}
-                style={{ padding: '6px 12px', fontSize: '0.9rem' }}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div
+                className="token-label"
+                title={projectsPayload || 'No projects payload loaded yet.'}
               >
-                RECENT ({recentProjects.length})
-              </button>
-              <button
-                onClick={() => setProjectFilter('HISTORY')}
-                className={projectFilter === 'HISTORY' ? 'btn-projects' : 'subtle'}
-                style={{ padding: '6px 12px', fontSize: '0.9rem' }}
-              >
-                HISTORY ({historyProjects.length})
-              </button>
+                Projects ({filteredProjects.length}/{totalProjects || projects.length})
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => setProjectFilter('RECENT')}
+                  className={projectFilter === 'RECENT' ? 'btn-projects' : 'subtle'}
+                  style={{ padding: '6px 12px', fontSize: '0.9rem' }}
+                >
+                  RECENT ({recentProjects.length})
+                </button>
+                <button
+                  onClick={() => setProjectFilter('HISTORY')}
+                  className={projectFilter === 'HISTORY' ? 'btn-projects' : 'subtle'}
+                  style={{ padding: '6px 12px', fontSize: '0.9rem' }}
+                >
+                  HISTORY ({historyProjects.length})
+                </button>
+              </div>
             </div>
+            
+            {projects.length > 0 && (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.85rem', color: '#999' }}>Sort by:</span>
+                <button
+                  onClick={() => setSortBy('default')}
+                  className={sortBy === 'default' ? 'btn-projects' : 'subtle'}
+                  style={{ padding: '4px 10px', fontSize: '0.85rem' }}
+                >
+                  Default
+                </button>
+                <button
+                  onClick={() => setSortBy('creationDate')}
+                  className={sortBy === 'creationDate' ? 'btn-projects' : 'subtle'}
+                  style={{ padding: '4px 10px', fontSize: '0.85rem' }}
+                >
+                  Creation Date
+                </button>
+                <button
+                  onClick={() => setSortBy('expiryDate')}
+                  className={sortBy === 'expiryDate' ? 'btn-projects' : 'subtle'}
+                  style={{ padding: '4px 10px', fontSize: '0.85rem' }}
+                >
+                  Expiry Date
+                </button>
+                <button
+                  onClick={() => setSortBy('price')}
+                  className={sortBy === 'price' ? 'btn-projects' : 'subtle'}
+                  style={{ padding: '4px 10px', fontSize: '0.85rem' }}
+                >
+                  Price
+                </button>
+              </div>
+            )}
           </div>
           {projects.length === 0 ? (
             <div className="muted">No projects loaded yet.</div>
