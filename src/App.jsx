@@ -132,9 +132,15 @@ function App() {
       
       setRefreshMessage('✓ Login succeeded! User data loaded.');
       
-      // Automatically fetch user categories first, then projects based on user type
-      await handleGetUserCategories();
-      await handleGetProjects(0, false);
+      // Automatically load projects based on user type
+      if (userType === 'PROVIDER') {
+        // For PROVIDER: first get categories, then fetch filtered projects from search
+        await handleGetUserCategories();
+        await handleGetProjects(0, false);
+      } else {
+        // For BUYER: just fetch regular projects
+        await handleGetProjects(0, false);
+      }
     } catch (err) {
       setError(err.message);
       // Show error alert
