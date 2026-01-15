@@ -133,6 +133,9 @@ function App() {
       
       setRefreshMessage('✓ Login succeeded! User data loaded.');
       
+      // Wait 1 second before loading data
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       // Automatically load projects based on user type
       if (userType === 'PROVIDER') {
         // For PROVIDER: first get categories, then fetch filtered projects from search
