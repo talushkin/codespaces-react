@@ -35,6 +35,7 @@ function App() {
     activePlan: '',
     lastLogin: '',
   });
+  const [userCategories, setUserCategories] = useState([]);
 
   // Reset localStorage on app start
   useEffect(() => {
@@ -102,9 +103,10 @@ function App() {
       updateAccessToken(token);
       
       // Extract and store user data from response
+      let userType = '';
+      let userDataObj = {};
       if (body?.user_info) {
         // Get userType from JWT token payload
-        let userType = '';
         if (token) {
           try {
             const [, payload] = token.split('.');
@@ -115,7 +117,7 @@ function App() {
           }
         }
         
-        setUserData({
+        userDataObj = {
           userId: body.user_info.id || '',
           firstName: body.user_info.firstName || '',
           lastName: body.user_info.lastName || '',
@@ -124,23 +126,14 @@ function App() {
           companyAccountType: body.company_info?.companyAccountType || '',
           activePlan: body.user_info.activePlan || '',
           lastLogin: body.company_info?.lastLogin || '',
-        });
+        };
+        setUserData(userDataObj);
       }
       
-      setRefreshMessage('Login succeeded. XPL_RT cookie set by server (HttpOnly, not readable via JS).');
+      setRefreshMessage('✓ Login succeeded! User data loaded.');
       
-      // Check if xpl_rt cookie exists (it's HttpOnly so won't appear in document.cookie)
-      const allCookies = document.cookie;
-      const hasXplRt = allCookies.includes('xpl_rt') || allCookies.includes('XPL_RT');
-      
-      // Show success alert
-      const cookieStatus = hasXplRt 
-        ? '✓ xpl_rt cookie found in document.cookie' 
-        : '⚠ xpl_rt cookie NOT visible in document.cookie (this is expected if HttpOnly is set)';
-      
-      alert(`✓ Login Successful!\n\nUser: ${body?.user_info?.username || email}\nAccess Token: ${token ? 'Received' : 'Missing'}\n\n${cookieStatus}\n\nAll cookies: ${allCookies || '(none)'}`);
-      
-      // Automatically fetch 999 projects after successful login
+      // Automatically fetch user categories first, then projects based on user type
+      await handleGetUserCategories();
       await handleGetProjects(0, false);
     } catch (err) {
       setError(err.message);
@@ -286,8 +279,22 @@ function App() {
     let attemptedRefresh = false;
 
     const fetchPage = async (authToken) => {
-      const search = new URLSearchParams({ page: String(pageNum), size: String(size) });
-      const res = await fetch(`${BASE_URL}/projects?${search.toString()}`, {
+      let url;
+      let search;
+      
+      // Check user type to determine which endpoint to use
+      if (userData.userType === 'PROVIDER' && userCategories.length > 0) {
+        // For PROVIDER, use search endpoint with categories
+        const categoryParams = userCategories.map(cat => `cat=${cat.id}`).join('&');
+        search = new URLSearchParams({ page: String(pageNum), size: String(size), sb: 'true' });
+        url = `${BASE_URL}/search/projects_search?${categoryParams}&${search.toString()}`;
+      } else {
+        // For BUYER or default, use regular projects endpoint
+        search = new URLSearchParams({ page: String(pageNum), size: String(size) });
+        url = `${BASE_URL}/projects?${search.toString()}`;
+      }
+      
+      const res = await fetch(url, {
         method: 'GET',
         credentials: 'include',
         headers: {
@@ -309,9 +316,36 @@ function App() {
       }
 
       const payload = Array.isArray(body) ? body[0] || {} : body || {};
-      const items = payload?.projects || payload?.content || payload?.projectsList || (Array.isArray(body) ? body : []);
+      
+      // Handle different response formats
+      let items;
+      if (payload?.items) {
+        // Search endpoint format - normalize to match projects format
+        items = payload.items.map(item => ({
+          id: item.projectId,
+          projectId: item.projectId,
+          name: item.name,
+          title: item.name,
+          description: item.description,
+          creationDate: item.date_posted_facet,
+          createdAt: item.date_posted_facet,
+          expiryDate: item.expirationDate,
+          expirationDate: item.expirationDate,
+          projectDueDate: item.project_due_date,
+          projectCategories: item.categories?.map(cat => ({
+            id: cat.catId_facet,
+            nameHe: cat.nameHe,
+            nameEn: cat.nameEn,
+            name: cat.nameHe || cat.nameEn
+          })) || []
+        }));
+      } else {
+        // Regular projects endpoint format
+        items = payload?.projects || payload?.content || payload?.projectsList || (Array.isArray(body) ? body : []);
+      }
+      
       const totalCount =
-        payload?.totalElements ?? payload?.totalCount ?? payload?.total ?? payload?.count ??
+        payload?.meta?.total ?? payload?.totalElements ?? payload?.totalCount ?? payload?.total ?? payload?.count ??
         (Array.isArray(body) ? body.length : items.length);
 
       // Show full response for debugging (use window.alert to avoid blocking issues)
@@ -421,6 +455,76 @@ function App() {
     }
   };
 
+  const handleGetUserCategories = async () => {
+    setError('');
+    setUserCategories([]);
+    let attemptedRefresh = false;
+
+    const fetchCategories = async (authToken) => {
+      const res = await fetch(`${BASE_URL}/core/categories_user`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          ...commonHeaders,
+          ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
+        },
+      });
+
+      const text = await res.text();
+      let body;
+      try {
+        body = JSON.parse(text);
+      } catch (err) {
+        body = null;
+      }
+
+      if (!res.ok) {
+        return { ok: false, body, status: res.status, text };
+      }
+
+      const categories = Array.isArray(body) ? body : [];
+      
+      // Only show alert when manually called (not during auto-load after login)
+      if (projects.length === 0) {
+        // Auto-load scenario - don't show alert
+        console.log('User categories loaded:', categories);
+      } else {
+        // Manual button click - show alert
+        const responseString = JSON.stringify(body, null, 2);
+        window.alert(`User Categories Response:\n\n${responseString}`);
+      }
+      
+      setUserCategories(categories);
+      return { ok: true };
+    };
+
+    try {
+      const firstAttempt = await fetchCategories();
+      if (firstAttempt.ok) return;
+
+      if (!attemptedRefresh) {
+        attemptedRefresh = true;
+        const newToken = await refreshAccessToken();
+        const retry = await fetchCategories(newToken);
+        if (retry.ok) return;
+        const message = retry.body?.messages?.join(', ') || retry.text || 'Get user categories failed';
+        throw new Error(`[${retry.status}] ${message}`);
+      }
+
+      const message = firstAttempt.body?.messages?.join(', ') || firstAttempt.text || 'Get user categories failed';
+      throw new Error(`[${firstAttempt.status}] ${message}`);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleScroll = (e) => {
+    const reachedBottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 50;
+    if (reachedBottom) {
+      loadMoreProjects();
+    }
+  };
+
   return (
     <div className="page">
       <div className="card">
@@ -493,6 +597,9 @@ function App() {
           <button onClick={() => handleGetProjects(0, false)} disabled={loading || !accessToken} className="btn-projects">
             Get user projects (/projects)
           </button>
+          <button onClick={handleGetUserCategories} disabled={loading || !accessToken} className="btn-projects">
+            Get user categories (/core/categories_user)
+          </button>
           <button onClick={handleSignOut} disabled={loading} className="btn-signout">
             Sign out (/security/sign-out)
           </button>
@@ -555,7 +662,13 @@ function App() {
               {userData.userType && (
                 <li>
                   <span className="pill">User Type</span>
-                  <span className="token-snippet">{userData.userType}</span>
+                  <span className="token-snippet" style={{ fontWeight: 'bold', color: userData.userType === 'PROVIDER' ? '#7bd7ff' : '#90EE90' }}>{userData.userType}</span>
+                </li>
+              )}
+              {userData.companyAccountType && (
+                <li>
+                  <span className="pill">Company Type</span>
+                  <span className="token-snippet">{userData.companyAccountType}</span>
                 </li>
               )}
               <li>
@@ -568,6 +681,21 @@ function App() {
                   <span className="token-snippet">{formatDate(userData.lastLogin)}</span>
                 </li>
               )}
+            </ul>
+          </div>
+        )}
+
+        {userCategories.length > 0 && (
+          <div className="token">
+            <div className="token-label">User Categories ({userCategories.length})</div>
+            <ul>
+              {userCategories.map((category) => (
+                <li key={category.id}>
+                  <span className="pill">CAT_ID: {category.id}</span>
+                  <span className="token-snippet">{category.nameHe || category.nameEn || 'N/A'}</span>
+                  <span className="pill subtle">Industry: {category.industryId || 'N/A'}</span>
+                </li>
+              ))}
             </ul>
           </div>
         )}
