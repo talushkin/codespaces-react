@@ -869,6 +869,7 @@ function App() {
                   const title = p?.name ?? p?.title ?? 'Unnamed project';
                   const createdAt = p?.creationDate ?? p?.createdAt ?? p?.dateCreated;
                   const expiresAt = p?.expiryDate ?? p?.expirationDate ?? p?.projectDueDate;
+                  const price = p?.amount_pj;
                   return (
                     <li key={projectId || idx}>
                       <div className="project-main">
@@ -879,6 +880,7 @@ function App() {
                           </span>
                         )}
                         {projectId ? <span className="pill">ID: {projectId}</span> : null}
+                        {price ? <span className="pill" style={{ backgroundColor: '#4CAF50', color: 'white' }}>₪{price.toLocaleString()}</span> : null}
                         <span className="pill subtle">#{idx + 1}</span>
                       </div>
                       {p?.projectCategories?.length > 0 && (
