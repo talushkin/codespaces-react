@@ -56,9 +56,11 @@ function App() {
   const [userCategories, setUserCategories] = useState([]);
   const [sortBy, setSortBy] = useState('default'); // 'default', 'creationDate', 'expiryDate', 'price'
 
-  // Reset localStorage on app start
+  // Clear both localStorage and sessionStorage on page reload
   useEffect(() => {
     localStorage.removeItem('accessToken');
+    sessionStorage.removeItem('accessToken');
+    setAccessToken('');
   }, []);
 
   // In a Vite/React setup we store tokens in sessionStorage to mimic "session" semantics.
@@ -118,7 +120,22 @@ function App() {
         throw new Error(`[${res.status}] ${msg}`);
       }
 
-      const token = body?.user_info?.tokenDto?.accessToken;
+      console.log('Login response tokenDto:', body?.user_info?.tokenDto);
+      
+      // Handle both cases: tokenDto.accessToken (object) or tokenDto itself (string)
+      let token;
+      const tokenDto = body?.user_info?.tokenDto;
+      if (typeof tokenDto === 'string') {
+        // tokenDto is already the token string
+        token = tokenDto;
+      } else if (tokenDto && typeof tokenDto.accessToken === 'string') {
+        // tokenDto is an object with accessToken property
+        token = tokenDto.accessToken;
+      } else {
+        token = null;
+      }
+      
+      console.log('Extracted token type:', typeof token, 'value:', token?.slice?.(0, 20) + '...' || token);
       updateAccessToken(token);
       
       // Extract and store user data from response
@@ -157,13 +174,13 @@ function App() {
       // Automatically load projects based on user type
       if (userType === 'PROVIDER') {
         // For PROVIDER: first get categories, then fetch filtered projects from search
-        await handleGetUserCategories();
+        await handleGetUserCategories(token);
         // Wait 1 second after getting categories before fetching projects
         await new Promise(resolve => setTimeout(resolve, 1000));
-        await handleGetProjects(0, false);
+        await handleGetProjects(0, false, token, userType);
       } else {
         // For BUYER: just fetch regular projects
-        await handleGetProjects(0, false);
+        await handleGetProjects(0, false, token, userType);
       }
     } catch (err) {
       setError(err.message);
@@ -200,7 +217,9 @@ function App() {
         throw new Error(`[${res.status}] ${message}\n\nFull API Response:\n${fullResponse}`);
       }
 
+      console.log('Refresh response parsed:', parsed);
       const token = parsed?.accessToken;
+      console.log('Refresh token type:', typeof token, 'value:', token?.slice?.(0, 20) + '...' || token);
       updateAccessToken(token);
       setRefreshMessage('Access token refreshed. XPL_RT cookie expiry is not exposed to JS (HttpOnly).');
       return token;
@@ -297,7 +316,7 @@ function App() {
     }
   };
 
-  const handleGetProjects = async (pageNum = 0, append = false) => {
+  const handleGetProjects = async (pageNum = 0, append = false, explicitToken = null, explicitUserType = null) => {
     setError('');
     if (!append) {
       setProjects([]);
@@ -312,24 +331,40 @@ function App() {
       let url;
       let search;
       
+      // Use explicit userType if provided, otherwise fall back to state
+      const currentUserType = explicitUserType || userData.userType;
+      
+      console.log('fetchPage - currentUserType:', currentUserType, 'userCategories:', userCategories.length);
+      
       // Check user type to determine which endpoint to use
-      if (userData.userType === 'PROVIDER' && userCategories.length > 0) {
-        // For PROVIDER, use search endpoint with categories
-        const categoryParams = userCategories.map(cat => `cat=${cat.id}`).join('&');
+      if (currentUserType === 'PROVIDER') {
+        // For PROVIDER, always use search endpoint
         search = new URLSearchParams({ page: String(pageNum), size: String(size), sb: 'true' });
-        url = `${BASE_URL}/search/projects_search?${categoryParams}&${search.toString()}`;
+        if (userCategories.length > 0) {
+          // Include categories if available
+          const categoryParams = userCategories.map(cat => `cat=${cat.id}`).join('&');
+          url = `${BASE_URL}/search/projects_search?${categoryParams}&${search.toString()}`;
+        } else {
+          // No categories - use search without category filter
+          url = `${BASE_URL}/search/projects_search?${search.toString()}`;
+        }
       } else {
         // For BUYER or default, use regular projects endpoint
         search = new URLSearchParams({ page: String(pageNum), size: String(size) });
         url = `${BASE_URL}/projects?${search.toString()}`;
       }
       
+      console.log('fetchPage - calling URL:', url);
+      
+      // Use the provided authToken, explicit token, or fall back to current accessToken
+      const tokenToUse = authToken || explicitToken || accessToken;
       const res = await fetch(url, {
         method: 'GET',
         credentials: 'include',
         headers: {
-          ...commonHeaders,
-          ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
+          accept: 'application/json',
+          'content-type': 'application/json',
+          ...(tokenToUse ? { authorization: `Bearer ${tokenToUse}` } : {}),
         },
       });
 
@@ -397,7 +432,8 @@ function App() {
     };
 
     try {
-      const firstAttempt = await fetchPage();
+      // Pass explicitToken on first attempt to use the newly received token
+      const firstAttempt = await fetchPage(explicitToken);
       if (firstAttempt.ok) return;
 
       if (!attemptedRefresh) {
@@ -419,6 +455,7 @@ function App() {
   };
 
   const updateAccessToken = (token) => {
+    console.log('updateAccessToken called with:', typeof token, token?.slice?.(0, 20) + '...' || token);
     setAccessToken(token || '');
     const expMs = token ? getExpiryMs(token) : null;
     setTokenExpiryMs(expMs);
@@ -468,7 +505,14 @@ function App() {
     
     const expiryDate = p?.expiryDate || p?.expirationDate || p?.projectDueDate;
     if (!expiryDate) return true;
-    return new Date(expiryDate) >= new Date();
+    
+    // Compare dates only (strip time) - projects expiring today should go to HISTORY
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expiry = new Date(expiryDate);
+    expiry.setHours(0, 0, 0, 0);
+    
+    return expiry > today;
   }).sort((a, b) => {
     // Sort hot projects first
     if (a.isHotProject && !b.isHotProject) return -1;
@@ -498,7 +542,14 @@ function App() {
     
     const expiryDate = p?.expiryDate || p?.expirationDate || p?.projectDueDate;
     if (!expiryDate) return false;
-    return new Date(expiryDate) < new Date();
+    
+    // Compare dates only (strip time) - projects expiring today should go to HISTORY
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expiry = new Date(expiryDate);
+    expiry.setHours(0, 0, 0, 0);
+    
+    return expiry <= today;
   }).sort((a, b) => {
     // Sort hot projects first
     if (a.isHotProject && !b.isHotProject) return -1;
@@ -537,18 +588,27 @@ function App() {
     }
   };
 
-  const handleGetUserCategories = async () => {
+  const handleGetUserCategories = async (explicitToken = null) => {
+    console.log('handleGetUserCategories called with explicitToken:', typeof explicitToken, explicitToken?.slice?.(0, 20) + '...' || explicitToken);
     setError('');
     setUserCategories([]);
     let attemptedRefresh = false;
 
     const fetchCategories = async (authToken) => {
+      // Use the provided authToken, explicit token, or fall back to current accessToken
+      const tokenToUse = authToken || explicitToken || accessToken;
+      console.log('fetchCategories using token:', typeof tokenToUse, tokenToUse?.slice?.(0, 20) + '...' || tokenToUse);
+      
+      const authHeader = tokenToUse ? `Bearer ${tokenToUse}` : undefined;
+      console.log('Authorization header:', authHeader?.slice?.(0, 30) + '...' || authHeader);
+      
       const res = await fetch(`${BASE_URL}/core/categories_user`, {
         method: 'GET',
         credentials: 'include',
         headers: {
-          ...commonHeaders,
-          ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
+          accept: 'application/json',
+          'content-type': 'application/json',
+          ...(authHeader ? { authorization: authHeader } : {}),
         },
       });
 
@@ -581,7 +641,8 @@ function App() {
     };
 
     try {
-      const firstAttempt = await fetchCategories();
+      // Pass explicitToken on first attempt to use the newly received token
+      const firstAttempt = await fetchCategories(explicitToken);
       if (firstAttempt.ok) return;
 
       if (!attemptedRefresh) {

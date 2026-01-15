@@ -1,11 +1,16 @@
 export default async function handler(req, res) {
-  const { path } = req.query;
+  const { path, ...queryParams } = req.query;
   const fullPath = Array.isArray(path) ? path.join('/') : path;
   
-  const url = `https://xpltestdev.click/app/v1/${fullPath}${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`;
+  // Build query string from remaining query parameters (excluding 'path')
+  const queryString = new URLSearchParams(queryParams).toString();
+  const url = `https://xpltestdev.click/app/v1/${fullPath}${queryString ? '?' + queryString : ''}`;
+  
+  console.log(`[Proxy] ${req.method} ${url}`);
+  console.log('[Proxy] Authorization:', req.headers.authorization ? 'Bearer ' + req.headers.authorization.substring(7, 30) + '...' : 'none');
 
   try {
-    // Prepare headers - forward cookies from the client
+    // Prepare headers - forward cookies and authorization from the client
     const headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -14,6 +19,11 @@ export default async function handler(req, res) {
     // Forward cookies from the client to the backend
     if (req.headers.cookie) {
       headers['Cookie'] = req.headers.cookie;
+    }
+    
+    // Forward Authorization header (Bearer token)
+    if (req.headers.authorization) {
+      headers['Authorization'] = req.headers.authorization;
     }
     
     const response = await fetch(url, {
