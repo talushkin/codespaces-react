@@ -7,6 +7,24 @@ const BASE_URL = isLocal ? 'https://xpltestdev.click/app/v1' : '/api';
 const PREFILL_EMAIL = 'testme0@gmail.com';
 const PREFILL_PASSWORD = 'xplace1207';
 
+// Budget range mapping based on projectBudgetRangeFacet
+const getBudgetRangeText = (budgetCode) => {
+  const ranges = {
+    'BUDGET_0': 'Not defined',
+    'BUDGET_1': 'Not defined',
+    'BUDGET_2': 'Up to 2,500 ILS',
+    'BUDGET_3': '2,500 - 5,000 ILS',
+    'BUDGET_4': '5,000 - 10,000 ILS',
+    'BUDGET_5': '10,000 - 25,000 ILS',
+    'BUDGET_6': '25,000 - 50,000 ILS',
+    'BUDGET_7': '50,000 - 100,000 ILS',
+    'BUDGET_8': '100,000 - 250,000 ILS',
+    'BUDGET_9': '250,000 - 500,000 ILS',
+    'BUDGET_10': 'Above 500,000 ILS',
+  };
+  return ranges[budgetCode] || null;
+};
+
 function App() {
   const [email, setEmail] = useState(PREFILL_EMAIL);
   const [password, setPassword] = useState(PREFILL_PASSWORD);
@@ -347,6 +365,7 @@ function App() {
           isHotProject: item.isHotProject || false,
           urgent: item.urgent || false,
           amount_pj: item.amount_pj || 0,
+          budgetRange: item.projectBudgetRangeFacet,
           projectCategories: item.categories?.map(cat => ({
             id: cat.catId_facet,
             nameHe: cat.nameHe,
@@ -870,6 +889,7 @@ function App() {
                   const createdAt = p?.creationDate ?? p?.createdAt ?? p?.dateCreated;
                   const expiresAt = p?.expiryDate ?? p?.expirationDate ?? p?.projectDueDate;
                   const price = p?.amount_pj;
+                  const budgetRangeText = p?.budgetRange ? getBudgetRangeText(p.budgetRange) : null;
                   return (
                     <li key={projectId || idx}>
                       <div className="project-main">
@@ -880,7 +900,8 @@ function App() {
                           </span>
                         )}
                         {projectId ? <span className="pill">ID: {projectId}</span> : null}
-                        {price ? <span className="pill" style={{ backgroundColor: '#4CAF50', color: 'white' }}>₪{price.toLocaleString()}</span> : null}
+                        {budgetRangeText ? <span className="pill" style={{ backgroundColor: '#4CAF50', color: 'white' }}>{budgetRangeText}</span> : 
+                         price ? <span className="pill" style={{ backgroundColor: '#4CAF50', color: 'white' }}>₪{price.toLocaleString()}</span> : null}
                         <span className="pill subtle">#{idx + 1}</span>
                       </div>
                       {p?.projectCategories?.length > 0 && (
