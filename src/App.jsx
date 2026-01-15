@@ -518,13 +518,6 @@ function App() {
     }
   };
 
-  const handleScroll = (e) => {
-    const reachedBottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 50;
-    if (reachedBottom) {
-      loadMoreProjects();
-    }
-  };
-
   return (
     <div className="page">
       <div className="card">
@@ -639,7 +632,7 @@ function App() {
           <div className="muted">Access token not set.</div>
         )}
 
-        {(userData.firstName || userData.lastName || userData.userName) && (
+        {accessToken && (userData.firstName || userData.lastName || userData.userName || userData.userId) && (
           <div className="token">
             <div className="token-label">User Information</div>
             <ul>
@@ -649,16 +642,20 @@ function App() {
                   <span className="token-snippet">{userData.userId}</span>
                 </li>
               )}
-              <li>
-                <span className="pill">Name</span>
-                <span className="token-snippet">
-                  {userData.firstName} {userData.lastName}
-                </span>
-              </li>
-              <li>
-                <span className="pill">Username</span>
-                <span className="token-snippet">{userData.userName}</span>
-              </li>
+              {(userData.firstName || userData.lastName) && (
+                <li>
+                  <span className="pill">Name</span>
+                  <span className="token-snippet">
+                    {userData.firstName} {userData.lastName}
+                  </span>
+                </li>
+              )}
+              {userData.userName && (
+                <li>
+                  <span className="pill">Username</span>
+                  <span className="token-snippet">{userData.userName}</span>
+                </li>
+              )}
               {userData.userType && (
                 <li>
                   <span className="pill">User Type</span>
@@ -671,10 +668,12 @@ function App() {
                   <span className="token-snippet">{userData.companyAccountType}</span>
                 </li>
               )}
-              <li>
-                <span className="pill">Active Plan</span>
-                <span className="token-snippet">{userData.activePlan ? 'Yes' : 'No'}</span>
-              </li>
+              {userData.activePlan !== '' && (
+                <li>
+                  <span className="pill">Active Plan</span>
+                  <span className="token-snippet">{userData.activePlan ? 'Yes' : 'No'}</span>
+                </li>
+              )}
               {userData.lastLogin && (
                 <li>
                   <span className="pill">Last Login</span>
