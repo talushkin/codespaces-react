@@ -175,10 +175,10 @@ function App() {
       // Automatically load projects based on user type
       if (userType === 'PROVIDER') {
         // For PROVIDER: first get categories, then fetch filtered projects from search
-        await handleGetUserCategories(token);
+        const categories = await handleGetUserCategories(token);
         // Wait 1 second after getting categories before fetching projects
         await new Promise(resolve => setTimeout(resolve, 1000));
-        await handleGetProjects(0, false, token, userType);
+        await handleGetProjects(0, false, token, userType, categories);
       } else {
         // For BUYER: just fetch regular projects
         await handleGetProjects(0, false, token, userType);
@@ -317,7 +317,7 @@ function App() {
     }
   };
 
-  const handleGetProjects = async (pageNum = 0, append = false, explicitToken = null, explicitUserType = null) => {
+  const handleGetProjects = async (pageNum = 0, append = false, explicitToken = null, explicitUserType = null, explicitCategories = null) => {
     setError('');
     if (!append) {
       setProjects([]);
@@ -335,7 +335,10 @@ function App() {
       // Use explicit userType if provided, otherwise fall back to state
       const currentUserType = explicitUserType || userData.userType;
       
-      console.log('fetchPage - currentUserType:', currentUserType, 'userCategories:', userCategories.length);
+      // Use explicit categories if provided, otherwise fall back to state
+      const currentCategories = explicitCategories || userCategories;
+      
+      console.log('fetchPage - currentUserType:', currentUserType, 'currentCategories:', currentCategories.length);
       
       // Check user type to determine which endpoint to use
       if (currentUserType === 'PROVIDER') {
@@ -350,9 +353,9 @@ function App() {
           sb: 'true',
           minExpiryDate: todayTimestamp // Filter out expired projects
         });
-        if (userCategories.length > 0) {
+        if (currentCategories.length > 0) {
           // Include categories if available
-          const categoryParams = userCategories.map(cat => `cat=${cat.id}`).join('&');
+          const categoryParams = currentCategories.map(cat => `cat=${cat.id}`).join('&');
           url = `${BASE_URL}/search/projects_search?${categoryParams}&${search.toString()}`;
         } else {
           // No categories - use search without category filter
@@ -391,6 +394,15 @@ function App() {
       }
 
       const payload = Array.isArray(body) ? body[0] || {} : body || {};
+      
+      console.log('Response payload structure:', {
+        hasItems: !!payload?.items,
+        hasTotal: !!payload?.total,
+        totalValue: payload?.total,
+        hasMeta: !!payload?.meta,
+        metaTotal: payload?.meta?.total,
+        payloadKeys: Object.keys(payload)
+      });
       
       // Handle different response formats
       let items;
@@ -675,19 +687,19 @@ function App() {
       }
       
       setUserCategories(categories);
-      return { ok: true };
+      return { ok: true, categories };
     };
 
     try {
       // Pass explicitToken on first attempt to use the newly received token
       const firstAttempt = await fetchCategories(explicitToken);
-      if (firstAttempt.ok) return;
+      if (firstAttempt.ok) return firstAttempt.categories || [];
 
       if (!attemptedRefresh) {
         attemptedRefresh = true;
         const newToken = await refreshAccessToken();
         const retry = await fetchCategories(newToken);
-        if (retry.ok) return;
+        if (retry.ok) return retry.categories || [];
         const message = retry.body?.messages?.join(', ') || retry.text || 'Get user categories failed';
         throw new Error(`[${retry.status}] ${message}`);
       }
@@ -696,6 +708,7 @@ function App() {
       throw new Error(`[${firstAttempt.status}] ${message}`);
     } catch (err) {
       setError(err.message);
+      return [];
     }
   };
 
@@ -769,7 +782,16 @@ function App() {
             Refresh token (/security/refresh)
           </button>
           <button 
-            onClick={() => handleGetProjects(0, false)} 
+            onClick={async () => {
+              if (userData.userType === 'PROVIDER') {
+                // For PROVIDER: get categories first, then projects with those categories
+                const categories = await handleGetUserCategories();
+                await handleGetProjects(0, false, null, null, categories);
+              } else {
+                // For BUYER: just get projects
+                await handleGetProjects(0, false);
+              }
+            }}
             disabled={loading || !accessToken} 
             className="btn-projects"
             style={userData.userType === 'PROVIDER' ? { backgroundColor: '#ff69b4', borderColor: '#ff69b4' } : {}}
